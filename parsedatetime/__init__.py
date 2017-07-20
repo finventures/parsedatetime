@@ -281,6 +281,24 @@ class Calendar(object):
                 pdt20DeprecationWarning)
         self._ctxStack = pdtContextStack()
 
+        self.list_of_matchers =   [ self.ptc.CRE_WEEKDAY,
+                            self.ptc.CRE_MODIFIER,
+                            self.ptc.CRE_NUMBER,
+                            self.ptc.CRE_UNITS,
+                            self.ptc.CRE_QUNITS,
+                            self.ptc.CRE_MUNITS,
+                            self.ptc.CRE_DATE3,
+                            self.ptc.CRE_DATE4,
+                            self.ptc.CRE_DATE5,
+                            self.ptc.CRE_DATE,
+                            self.ptc.CRE_DAY,
+                            self.ptc.CRE_WEEKDAY,
+                            self.ptc.CRE_SPECIAL,
+                            self.ptc.CRE_TIME,
+                            self.ptc.CRE_TIMEHMS2,
+                            self.ptc.CRE_TIMEHMS ]
+
+
     @contextlib.contextmanager
     def context(self):
         ctx = pdtContext()
@@ -1865,8 +1883,11 @@ class Calendar(object):
                 curr_date_string = []
                 curr_date_streak = False
         dates_list.append(" ".join(curr_date_string))
+        dates_list = [x.encode('UTF8') for x in dates_list]
         dates_list  = filter(None, dates_list)
-        return dates_list
+        is_not_thing = lambda x: x != 'a' and x!= 'this' and x!= 'the' and x!='an' and x!= 'i' and x!= 'at' and x!= 'and'
+        result = filter(is_not_thing, dates_list)
+        return result
 
     def inc(self, source, month=None, year=None):
         """
@@ -2487,6 +2508,9 @@ class Constants(object):
                                 )
                             )'''.format(**self.locale.re_values)
 
+        # matching cases with "the 20th"
+        self.RE_DATE5     = r'the \w*(?= )' % self.locale.re_values
+
         # still not completely sure of the behavior of the regex and
         # whether it would be best to consume all possible irrelevant
         # characters before the option groups (but within the {1,3} repetition
@@ -2554,6 +2578,9 @@ class Constants(object):
                                  (?:\d+(?:{decimal_mark}\d+|)|(?:{numbers})\s+)\s*
                                  (?P<qunits>{qunits})
                              )\b'''.format(**self.locale.re_values)
+
+        self.RE_MUNITS    = r'((last|next) (week|month|year))'
+
 
         self.RE_MODIFIER = r'''\b(?:
                                    {modifiers}
@@ -2633,6 +2660,7 @@ class Constants(object):
 
         self.RE_REMAINING = r'\s+'
 
+
         # Regex for date/time ranges
         self.RE_RTIMEHMS = r'''(\s*|^)
                                (\d\d?){timeseparator}
@@ -2698,6 +2726,7 @@ class Constants(object):
                            'CRE_UNITS': self.RE_UNITS,
                            'CRE_UNITS_ONLY': self.RE_UNITS_ONLY,
                            'CRE_QUNITS': self.RE_QUNITS,
+                           'CRE_MUNITS': self.RE_MUNITS,
                            'CRE_MODIFIER': self.RE_MODIFIER,
                            'CRE_TIMEHMS': self.RE_TIMEHMS,
                            'CRE_TIMEHMS2': self.RE_TIMEHMS2,
@@ -2705,6 +2734,7 @@ class Constants(object):
                            'CRE_DATE2': self.RE_DATE2,
                            'CRE_DATE3': self.RE_DATE3,
                            'CRE_DATE4': self.RE_DATE4,
+                           'CRE_DATE5': self.RE_DATE5,
                            'CRE_MONTH': self.RE_MONTH,
                            'CRE_WEEKDAY': self.RE_WEEKDAY,
                            'CRE_DAY': self.RE_DAY,
