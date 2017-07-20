@@ -1776,97 +1776,97 @@ class Calendar(object):
         dt = localize(datetime.datetime(*time_struct[:6]))
         return dt, ret_code
 
-    def parse(self, datetimeString, sourceTime=None, version=None):
+    def parseHelper(self, matched_list):
+        matched_entities = []
+        for x in matched_list:
+            curr = x[0]
+            matched_entities.append(curr)
+        return matched_entities
+
+    def parse(self, datetimeString, sourceTime=None):
         """
-        Splits the given C{datetimeString} into tokens, finds the regex
-        patterns that match and then calculates a C{struct_time} value from
-        the chunks.
-
-        If C{sourceTime} is given then the C{struct_time} value will be
-        calculated from that value, otherwise from the current date/time.
-
-        If the C{datetimeString} is parsed and date/time value found, then::
-
-            If C{version} equals to L{VERSION_FLAG_STYLE}, the second item of
-            the returned tuple will be a flag to let you know what kind of
-            C{struct_time} value is being returned::
-
-                0 = not parsed at all
-                1 = parsed as a C{date}
-                2 = parsed as a C{time}
-                3 = parsed as a C{datetime}
-
-            If C{version} equals to L{VERSION_CONTEXT_STYLE}, the second value
-            will be an instance of L{pdtContext}
-
-        @type  datetimeString: string
-        @param datetimeString: date/time text to evaluate
-        @type  sourceTime:     struct_time
-        @param sourceTime:     C{struct_time} value to use as the base
-        @type  version:        integer
-        @param version:        style version, default will use L{Calendar}
-                               parameter version value
-
-        @rtype:  tuple
-        @return: tuple of: modified C{sourceTime} and the result flag/context
+        Input: An incoming message (string)
+        Ouptut: A list of dates (list of strings)
         """
-        debug and log.debug('parse()')
 
-        datetimeString = re.sub(r'(\w)\.(\s)', r'\1\2', datetimeString)
-        datetimeString = re.sub(r'(\w)[\'"](\s|$)', r'\1 \2', datetimeString)
-        datetimeString = re.sub(r'(\s|^)[\'"](\w)', r'\1 \2', datetimeString)
-
+        datetimeString = re.sub(r'(\w)(\.)(\s)', r'\1\3', datetimeString)
+        datetimeString = re.sub(r'(\w)(\'|")(\s|$)', r'\1 \3', datetimeString)
+        datetimeString = re.sub(r'(\s|^)(\'|")(\w)', r'\1 \3', datetimeString)
         if sourceTime:
             if isinstance(sourceTime, datetime.datetime):
-                debug and log.debug('coercing datetime to timetuple')
+                log.debug('coercing datetime to timetuple')
                 sourceTime = sourceTime.timetuple()
             else:
                 if not isinstance(sourceTime, time.struct_time) and \
-                        not isinstance(sourceTime, tuple):
-                    raise ValueError('sourceTime is not a struct_time')
-        else:
-            sourceTime = time.localtime()
+                   not isinstance(sourceTime, tuple):
+                    raise Exception('sourceTime is not a struct_time')
 
-        with self.context() as ctx:
-            s = datetimeString.lower().strip()
-            debug and log.debug('remainedString (before parsing): [%s]', s)
+        s         = datetimeString.strip().lower()
+        parseStr  = ''
+        totalTime = sourceTime
 
-            while s:
-                for parseMeth in (self._partialParseModifier,
-                                  self._partialParseUnits,
-                                  self._partialParseQUnits,
-                                  self._partialParseDateStr,
-                                  self._partialParseDateStd,
-                                  self._partialParseDayStr,
-                                  self._partialParseWeekday,
-                                  self._partialParseTimeStr,
-                                  self._partialParseMeridian,
-                                  self._partialParseTimeStd):
-                    retS, retTime, matched = parseMeth(s, sourceTime)
-                    if matched:
-                        s, sourceTime = retS.strip(), retTime
-                        break
-                else:
-                    # nothing matched
-                    s = ''
+        if s == '' :
+            if sourceTime is not None:
+                return (sourceTime, self.dateFlag + self.timeFlag)
+            else:
+                return (time.localtime(), 0)
 
-                debug and log.debug('hasDate: [%s], hasTime: [%s]',
-                                    ctx.hasDate, ctx.hasTime)
-                debug and log.debug('remainedString: [%s]', s)
+        self.timeFlag = 0
+        self.dateFlag = 0
 
-            # String is not parsed at all
-            if sourceTime is None:
-                debug and log.debug('not parsed [%s]', str(sourceTime))
-                sourceTime = time.localtime()
-
-        if not isinstance(sourceTime, time.struct_time):
-            sourceTime = time.struct_time(sourceTime)
-
-        version = self.version if version is None else version
-        if version == VERSION_CONTEXT_STYLE:
-            return sourceTime, ctx
-        else:
-            return sourceTime, ctx.dateTimeFlag
+        dates_gotten = []
+        for pattern in self.list_of_matchers:
+            # Weekday
+            m = pattern.search(s)
+            if (m is not None):
+                dates_gotten.append(m.group())
+        word_date_matcher = re.compile(r'((the)? \w+(st|th|nd|rd))')
+        units_matcher = re.compile(r'((last|next) (week|month|year))')
+        time_matcher = re.compile(r'(at? ([1-9]|1[012])\s?(pm|am)?)')
+        numeric_matcher = re.compile(r'(in a (few|couple) (of )?(hours|minutes|seconds|days|weeks|months|years))')
+        number_word_date_matches = word_date_matcher.findall(s)
+        # Now that we've figured out which parts of the sentene has parts of dates/times,
+        # we now figure  out which date-like objects belong together
+        time_matches = time_matcher.findall(s)
+        unit_matches = units_matcher.findall(s)
+        numeric_matches = numeric_matcher.findall(s)
+        formatted_matched_dates = self.parseHelper(number_word_date_matches)
+        formatted_matched_times = self.parseHelper(time_matches)
+        formatted_matched_units = self.parseHelper(unit_matches)
+        formatted_matched_numeric = self.parseHelper(numeric_matches)
+        dates_gotten.extend(formatted_matched_dates)
+        dates_gotten.extend(formatted_matched_times)
+        dates_gotten.extend(formatted_matched_units)
+        dates_gotten.extend(formatted_matched_numeric)
+        curr_date_streak = False
+        curr_date_string = []
+        s = s.split(" ")
+        dates_parts_gotten = [m.strip('\'\"-,.:;!? ') for m in dates_gotten]
+        formatted_dates_parts_gotten = []
+        for date in dates_parts_gotten:
+            if ' ' in date:
+                parts_of_entities = date.split(' ')
+                formatted_dates_parts_gotten.extend(parts_of_entities)
+            else:
+                formatted_dates_parts_gotten.append(date)
+        dates_gotten_dict = {i: True for i in formatted_dates_parts_gotten}
+        dates_list = []
+        # Here, given taht we have annotated parts of the sentence, congregate dates
+        # i.e. 'Feb 20th' is not Feb and 20th, but is one entity
+        for word in s:
+            word = word.rstrip('\'\"-,.:;!?')
+            if (curr_date_streak and dates_gotten_dict.get(word)):
+                curr_date_string.append(word)
+            elif dates_gotten_dict.get(word):
+                curr_date_streak = True
+                curr_date_string.append(word)
+            else:
+                dates_list.append(" ".join(curr_date_string))
+                curr_date_string = []
+                curr_date_streak = False
+        dates_list.append(" ".join(curr_date_string))
+        dates_list  = filter(None, dates_list)
+        return dates_list
 
     def inc(self, source, month=None, year=None):
         """
